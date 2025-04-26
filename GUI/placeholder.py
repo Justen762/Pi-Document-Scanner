@@ -1,10 +1,9 @@
 import tkinter as tk
 from tkinter import messagebox
-import requests                     # <-- make sure:  pip install requests
+import requests
 
 class PiScannerGUI(tk.Tk):
-    # ── NEW: where is the Pi? ─────────────────────────────────────
-    PI_HOST = "192.168.137.145"     # use the address Flask printed
+    PI_HOST = "192.168.137.145"     # address Flask printed
 
     def __init__(self):
         super().__init__()
@@ -20,7 +19,7 @@ class PiScannerGUI(tk.Tk):
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=5)
 
-        tk.Button(btn_frame, text="Ping Pi",           #  ← NEW button
+        tk.Button(btn_frame, text="Ping Pi",
                   command=self.ping_pi).grid(row=0, column=0, padx=4)
         tk.Button(btn_frame, text="📸 Capture",
                   command=self.capture).grid(row=0, column=1, padx=4)
@@ -30,7 +29,6 @@ class PiScannerGUI(tk.Tk):
         self.status = tk.StringVar(value="Ready")
         tk.Label(self, textvariable=self.status).pack(pady=6)
 
-    # ── NEW: talk to the Flask API ────────────────────────────────
     def ping_pi(self):
         url = f"http://{self.PI_HOST}:5000/"
         try:
@@ -43,7 +41,7 @@ class PiScannerGUI(tk.Tk):
             self.status.set("Ping failed")
             messagebox.showerror("Ping Pi", str(e))
 
-    # ── stubs that you’ll fill in later ───────────────────────────
+    # stubs that we’ll fill in later
     def capture(self):
         self.status.set("Capturing… (stub)")
 
