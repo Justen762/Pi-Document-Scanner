@@ -8,7 +8,7 @@ import requests
 class PiScannerGUI(tk.Tk):
     PI_HOST = "192.168.137.32"   # ← your Pi’s IP
     # interval between frames in milliseconds (lower = higher fps)
-    STREAM_INTERVAL_MS = 50  # ~20 fps
+    STREAM_INTERVAL_MS = 60  # ~20 fps
 
     def __init__(self):
         super().__init__()

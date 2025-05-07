@@ -15,7 +15,6 @@ def capture_still(output_path: str, size=(2480, 3508), quality=80):
     """
     with _camera_lock:
         picam2 = Picamera2()
-        # Use a small preview config rather than the full‐resolution still
         config = picam2.create_preview_configuration(
             main={"size": size, "format": "RGB888"}
         )
@@ -50,7 +49,6 @@ def quick_capture(size=(620, 877), quality=60):
         picam2.stop()
         picam2.close()
     array = np.ascontiguousarray(array)
-        # … after creating PIL image from array …
     img = Image.fromarray(array)
     img = img.convert("L")                # single-channel grayscale
     buf = io.BytesIO()
