@@ -7,6 +7,8 @@ import requests
 
 class PiScannerGUI(tk.Tk):
     PI_HOST = "192.168.137.32"   # ← your Pi’s IP
+    # interval between frames in milliseconds (lower = higher fps)
+    STREAM_INTERVAL_MS = 50  # ~20 fps
 
     def __init__(self):
         super().__init__()
@@ -31,13 +33,12 @@ class PiScannerGUI(tk.Tk):
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=5)
 
-        tk.Button(btn_frame, text="Ping Pi", command=self.ping_pi)
-        tk.Button(btn_frame, text="📸 Capture", command=self.capture)
-        tk.Button(btn_frame, text="💾 Download", command=self.download)
-        tk.Button(btn_frame, text="Quit", command=self.quit_app)
-
-        for idx, widget in enumerate(btn_frame.winfo_children()):
-            widget.grid(row=0, column=idx, padx=4)
+        for label, cmd in [("Ping Pi", self.ping_pi),
+                           ("📸 Capture", self.capture),
+                           ("💾 Download", self.download),
+                           ("Quit", self.quit_app)]:
+            btn = tk.Button(btn_frame, text=label, command=cmd)
+            btn.pack(side="left", padx=4)
 
         self.status = tk.StringVar(value="Ready")
         tk.Label(self, textvariable=self.status).pack(pady=6)
@@ -54,9 +55,9 @@ class PiScannerGUI(tk.Tk):
         if not self.streaming:
             return
         try:
-            r = requests.get(
-                f"http://{self.PI_HOST}:5000/preview", timeout=2
-            )
+            # use the faster preview endpoint
+            url = f"http://{self.PI_HOST}:5000/preview"
+            r = requests.get(url, timeout=1)
             r.raise_for_status()
             img = Image.open(io.BytesIO(r.content))
 
@@ -68,15 +69,15 @@ class PiScannerGUI(tk.Tk):
             img.thumbnail((max_w, max_h), Image.LANCZOS)
 
             photo = ImageTk.PhotoImage(img)
-            self.preview.config(image=photo, text="")
+            self.preview.config(image=photo)
             self.preview.image = photo
             self.status.set("Streaming")
-        except Exception as e:
-            # network or parse error
-            self.status.set("Stream error")
+        except Exception:
+            # ignore occasional errors silently or show minimal status
+            self.status.set("Streaming...")
         finally:
-            # schedule next frame
-            self.after(100, self.stream_preview)
+            # schedule next frame for high fps
+            self.after(self.STREAM_INTERVAL_MS, self.stream_preview)
 
     def ping_pi(self):
         try:
@@ -89,7 +90,7 @@ class PiScannerGUI(tk.Tk):
             messagebox.showerror("Ping Pi", str(e))
 
     def capture(self):
-        # pause streaming
+        # pause streaming to avoid conflict
         self.stop_stream()
         try:
             r = requests.get(f"http://{self.PI_HOST}:5000/capture", timeout=5)
@@ -107,7 +108,7 @@ class PiScannerGUI(tk.Tk):
             thumb.thumbnail((max_w, max_h), Image.LANCZOS)
 
             photo = ImageTk.PhotoImage(thumb)
-            self.preview.config(image=photo, text="")
+            self.preview.config(image=photo)
             self.preview.image = photo
             self.status.set("Captured ✔️")
         except Exception as e:
@@ -140,7 +141,7 @@ class PiScannerGUI(tk.Tk):
         self.start_stream()
 
     def quit_app(self):
-        if messagebox.askokcancel("Quit", "Close the scanner UI?"):
+        if messagebox.askokcancel("Quit", "Close the scanner UI?" ):
             self.destroy()
 
 if __name__ == "__main__":

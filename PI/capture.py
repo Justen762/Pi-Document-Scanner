@@ -50,7 +50,9 @@ def quick_capture(size=(620, 877), quality=60):
         picam2.stop()
         picam2.close()
     array = np.ascontiguousarray(array)
+        # … after creating PIL image from array …
     img = Image.fromarray(array)
+    img = img.convert("L")                # single-channel grayscale
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality, optimize=True)
     return buf.getvalue()
