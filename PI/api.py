@@ -1,4 +1,3 @@
-# api.py
 from flask import Flask, send_file, current_app, make_response
 import os
 from capture import capture_still, quick_capture
@@ -8,14 +7,6 @@ app = Flask(__name__)
 @app.route("/")
 def root():
     return {"message": "👋 Pi is connected"}, 200
-
-@app.route("/hello")
-def hello():
-    return {"message": "Hello endpoint works"}, 200
-
-@app.route("/health")
-def health():
-    return {"ok": True}, 200
 
 @app.route("/capture", methods=["GET"])
 def capture():
@@ -40,7 +31,7 @@ def capture():
 @app.route("/preview", methods=["GET"])
 def preview():
     """
-    Returns a fast, low-latency JPEG for the live viewfinder (no autofocus delay).
+    fast, low-latency JPEG for the viewfinder (no delay for autofocus).
     """
     try:
         jpg_bytes = quick_capture()

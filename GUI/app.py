@@ -6,18 +6,23 @@ from PIL import Image, ImageTk
 import requests
 
 class PiScannerGUI(tk.Tk):
-    PI_HOST = "192.168.137.32"   # ← your Pi’s IP
-    # interval between frames in milliseconds (lower = higher fps)
-    STREAM_INTERVAL_MS = 60  # ~20 fps
+    PI_HOST = "192.168.137.32"  # ← Pi’s IP
+    STREAM_INTERVAL_MS = 50       # interval between frames (~20 fps)
 
     def __init__(self):
         super().__init__()
         self.title("Raspberry Pi Document Scanner")
-        self.geometry("400x600")
+        self.geometry("400x640")
         self.last_image = None
+        self.pages = []             # collected pages for PDF
         self.streaming = False
+
+        # label for Pi status
+        self.hello_var = tk.StringVar(value="Connecting to Pi...")
+        tk.Label(self, textvariable=self.hello_var, font=(None, 12, 'bold')).pack(pady=(10, 0))
+
         self._build_widgets()
-        # start the live viewfinder
+        self.ping_pi()              # get Pi connection message
         self.start_stream()
 
     def _build_widgets(self):
@@ -33,11 +38,12 @@ class PiScannerGUI(tk.Tk):
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=5)
 
-        for label, cmd in [("Ping Pi", self.ping_pi),
-                           ("📸 Capture", self.capture),
-                           ("💾 Download", self.download),
-                           ("Quit", self.quit_app)]:
-            btn = tk.Button(btn_frame, text=label, command=cmd)
+        # Capture, Download Image, Save PDF, Quit
+        self.btn_capture = tk.Button(btn_frame, text="📸 Capture", command=self.capture)
+        self.btn_download = tk.Button(btn_frame, text="💾 Download", command=self.download)
+        self.btn_save_pdf = tk.Button(btn_frame, text="📄 Save PDF", command=self.save_pdf)
+
+        for btn in [self.btn_capture, self.btn_download, self.btn_save_pdf]:
             btn.pack(side="left", padx=4)
 
         self.status = tk.StringVar(value="Ready")
@@ -55,94 +61,92 @@ class PiScannerGUI(tk.Tk):
         if not self.streaming:
             return
         try:
-            # use the faster preview endpoint
-            url = f"http://{self.PI_HOST}:5000/preview"
-            r = requests.get(url, timeout=1)
+            r = requests.get(f"http://{self.PI_HOST}:5000/preview", timeout=1)
             r.raise_for_status()
             img = Image.open(io.BytesIO(r.content))
-
-            # scale to fit container
             container = self.preview.master
             container.update_idletasks()
-            max_w = container.winfo_width()
-            max_h = container.winfo_height()
+            max_w, max_h = container.winfo_width(), container.winfo_height()
             img.thumbnail((max_w, max_h), Image.LANCZOS)
-
             photo = ImageTk.PhotoImage(img)
             self.preview.config(image=photo)
             self.preview.image = photo
-            self.status.set("Streaming")
         except Exception:
-            # ignore occasional errors silently or show minimal status
-            self.status.set("Streaming...")
+            pass
         finally:
-            # schedule next frame for high fps
             self.after(self.STREAM_INTERVAL_MS, self.stream_preview)
 
     def ping_pi(self):
         try:
-            r = requests.get(f"http://{self.PI_HOST}:5000/hello", timeout=3)
+            r = requests.get(f"http://{self.PI_HOST}:5000/", timeout=3)
             r.raise_for_status()
             msg = r.json().get("message", "")
-            self.status.set(f"Pi says: {msg}")
-        except Exception as e:
-            self.status.set("Ping failed")
-            messagebox.showerror("Ping Pi", str(e))
+            self.hello_var.set(f"Pi: {msg}")
+        except Exception:
+            self.hello_var.set("Pi unreachable")
 
     def capture(self):
-        # pause streaming to avoid conflict
         self.stop_stream()
         try:
             r = requests.get(f"http://{self.PI_HOST}:5000/capture", timeout=5)
             r.raise_for_status()
-
             orig = Image.open(io.BytesIO(r.content))
             self.last_image = orig.copy()
+            # always add to pages
+            self.pages.append(self.last_image.copy())
+            self.status.set(f"Captured page {len(self.pages)}")
 
-            # display thumbnail of the captured still
+            # thumbnail display
             container = self.preview.master
             container.update_idletasks()
-            max_w = container.winfo_width()
-            max_h = container.winfo_height()
+            max_w, max_h = container.winfo_width(), container.winfo_height()
             thumb = orig.copy()
             thumb.thumbnail((max_w, max_h), Image.LANCZOS)
-
             photo = ImageTk.PhotoImage(thumb)
             self.preview.config(image=photo)
             self.preview.image = photo
-            self.status.set("Captured ✔️")
         except Exception as e:
             self.status.set("Capture failed")
             messagebox.showerror("Capture", str(e))
+        finally:
+            self.start_stream()
 
     def download(self):
-        if self.last_image is None:
-            messagebox.showerror(
-                "Download", "No image to save. Please capture first."
-            )
+        if not self.last_image:
+            messagebox.showerror("Download", "No image to save. Capture first.")
             return
-        file_path = filedialog.asksaveasfilename(
+        path = filedialog.asksaveasfilename(
             defaultextension=".jpg",
-            filetypes=[
-                ("JPEG Image", "*.jpg"),
-                ("PNG Image", "*.png"),
-                ("All Files", "*.*"),
-            ],
+            filetypes=[("JPEG", "*.jpg"), ("PNG", "*.png"), ("All", "*.*")],
             initialdir=os.path.expanduser("~/Desktop"),
-            title="Save Image As",
+            title="Save Image As"
         )
-        if file_path:
+        if path:
             try:
-                self.last_image.save(file_path)
-                self.status.set(f"Saved to {file_path}")
+                self.last_image.save(path)
+                self.status.set(f"Saved to {path}")
             except Exception as e:
                 messagebox.showerror("Save Error", str(e))
-        # resume viewfinder
-        self.start_stream()
 
-    def quit_app(self):
-        if messagebox.askokcancel("Quit", "Close the scanner UI?" ):
-            self.destroy()
+    def save_pdf(self):
+        if not self.pages:
+            messagebox.showerror("Save PDF", "No pages captured.")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF", "*.pdf")],
+            initialdir=os.path.expanduser("~/Desktop"),
+            title="Save PDF"
+        )
+        if path:
+            try:
+                first, rest = self.pages[0], self.pages[1:]
+                first.save(path, "PDF", save_all=True, append_images=rest, resolution=100.0)
+                self.status.set(f"PDF saved to {path}")
+                # clear pages after saving
+                self.pages.clear()
+            except Exception as e:
+                messagebox.showerror("PDF Error", str(e))
 
 if __name__ == "__main__":
     PiScannerGUI().mainloop()

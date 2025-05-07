@@ -1,4 +1,3 @@
-# capture.py
 from picamera2 import Picamera2
 import threading
 import numpy as np
