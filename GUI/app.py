@@ -1,47 +1,82 @@
-# PiScannerGUI.py
 import io
+import os
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 from PIL import Image, ImageTk
 import requests
 
 class PiScannerGUI(tk.Tk):
-    PI_HOST = "192.168.137.145"   # ← your Pi’s IP
+    PI_HOST = "192.168.137.32"   # ← your Pi’s IP
 
     def __init__(self):
         super().__init__()
         self.title("Raspberry Pi Document Scanner")
         self.geometry("400x600")
+        self.last_image = None
+        self.streaming = False
         self._build_widgets()
+        # start the live viewfinder
+        self.start_stream()
 
     def _build_widgets(self):
-        # Create a fixed-size container for the viewfinder (360×480 px)
-        preview_container = tk.Frame(self,
-                                     width=360,
-                                     height=480,
-                                     relief="groove",
-                                     bd=2,
-                                     bg="black")
+        preview_container = tk.Frame(
+            self, width=360, height=480, relief="groove", bd=2, bg="black"
+        )
         preview_container.pack(pady=10)
-        # Prevent the container from resizing to its contents
         preview_container.pack_propagate(False)
 
-        # This Label will hold the live thumbnail
         self.preview = tk.Label(preview_container, bg="black")
         self.preview.pack(fill="both", expand=True)
 
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=5)
 
-        tk.Button(btn_frame, text="Ping Pi",
-                  command=self.ping_pi).grid(row=0, column=0, padx=4)
-        tk.Button(btn_frame, text="📸 Capture",
-                  command=self.capture).grid(row=0, column=1, padx=4)
-        tk.Button(btn_frame, text="Quit",
-                  command=self.quit_app).grid(row=0, column=2, padx=4)
+        tk.Button(btn_frame, text="Ping Pi", command=self.ping_pi)
+        tk.Button(btn_frame, text="📸 Capture", command=self.capture)
+        tk.Button(btn_frame, text="💾 Download", command=self.download)
+        tk.Button(btn_frame, text="Quit", command=self.quit_app)
+
+        for idx, widget in enumerate(btn_frame.winfo_children()):
+            widget.grid(row=0, column=idx, padx=4)
 
         self.status = tk.StringVar(value="Ready")
         tk.Label(self, textvariable=self.status).pack(pady=6)
+
+    def start_stream(self):
+        if not self.streaming:
+            self.streaming = True
+            self.stream_preview()
+
+    def stop_stream(self):
+        self.streaming = False
+
+    def stream_preview(self):
+        if not self.streaming:
+            return
+        try:
+            r = requests.get(
+                f"http://{self.PI_HOST}:5000/capture", timeout=2
+            )
+            r.raise_for_status()
+            img = Image.open(io.BytesIO(r.content))
+
+            # scale to fit container
+            container = self.preview.master
+            container.update_idletasks()
+            max_w = container.winfo_width()
+            max_h = container.winfo_height()
+            img.thumbnail((max_w, max_h), Image.LANCZOS)
+
+            photo = ImageTk.PhotoImage(img)
+            self.preview.config(image=photo, text="")
+            self.preview.image = photo
+            self.status.set("Streaming")
+        except Exception as e:
+            # network or parse error
+            self.status.set("Stream error")
+        finally:
+            # schedule next frame
+            self.after(100, self.stream_preview)
 
     def ping_pi(self):
         try:
@@ -54,32 +89,55 @@ class PiScannerGUI(tk.Tk):
             messagebox.showerror("Ping Pi", str(e))
 
     def capture(self):
+        # pause streaming
+        self.stop_stream()
         try:
             r = requests.get(f"http://{self.PI_HOST}:5000/capture", timeout=5)
             r.raise_for_status()
 
-            # load JPEG bytes
-            img = Image.open(io.BytesIO(r.content))
+            orig = Image.open(io.BytesIO(r.content))
+            self.last_image = orig.copy()
 
-            # Figure out our container size (360×480)
+            # display thumbnail of the captured still
             container = self.preview.master
             container.update_idletasks()
             max_w = container.winfo_width()
             max_h = container.winfo_height()
+            thumb = orig.copy()
+            thumb.thumbnail((max_w, max_h), Image.LANCZOS)
 
-            # Scale down with aspect‐ratio preserved
-            img.thumbnail((max_w, max_h), Image.LANCZOS)
-
-            photo = ImageTk.PhotoImage(img)
-
-            # swap into the label
+            photo = ImageTk.PhotoImage(thumb)
             self.preview.config(image=photo, text="")
             self.preview.image = photo
-
             self.status.set("Captured ✔️")
         except Exception as e:
             self.status.set("Capture failed")
             messagebox.showerror("Capture", str(e))
+
+    def download(self):
+        if self.last_image is None:
+            messagebox.showerror(
+                "Download", "No image to save. Please capture first."
+            )
+            return
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".jpg",
+            filetypes=[
+                ("JPEG Image", "*.jpg"),
+                ("PNG Image", "*.png"),
+                ("All Files", "*.*"),
+            ],
+            initialdir=os.path.expanduser("~/Desktop"),
+            title="Save Image As",
+        )
+        if file_path:
+            try:
+                self.last_image.save(file_path)
+                self.status.set(f"Saved to {file_path}")
+            except Exception as e:
+                messagebox.showerror("Save Error", str(e))
+        # resume viewfinder
+        self.start_stream()
 
     def quit_app(self):
         if messagebox.askokcancel("Quit", "Close the scanner UI?"):

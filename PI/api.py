@@ -1,7 +1,7 @@
 # api.py
 from flask import Flask, send_file, current_app, make_response
 import os
-from capture import capture_still
+from capture import capture_still, quick_capture
 
 app = Flask(__name__)
 
@@ -36,6 +36,26 @@ def capture():
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+@app.route("/preview", methods=["GET"])
+def preview():
+    """
+    Returns a fast, low-latency JPEG for the live viewfinder (no autofocus delay).
+    """
+    try:
+        jpg_bytes = quick_capture()
+    except Exception as e:
+        current_app.logger.error(f"Preview failed: {e}", exc_info=True)
+        return {"error": "Preview failed"}, 500
+
+    resp = make_response(jpg_bytes)
+    resp.headers["Content-Type"] = "image/jpeg"
+    resp.headers.update({
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    })
+    return resp
 
 if __name__ == "__main__":
     # debug=False ensures a single-threaded server (avoids camera lock issues)
