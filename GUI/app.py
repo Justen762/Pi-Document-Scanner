@@ -55,7 +55,7 @@ class PiScannerGUI(tk.Tk):
             return
         try:
             r = requests.get(
-                f"http://{self.PI_HOST}:5000/capture", timeout=2
+                f"http://{self.PI_HOST}:5000/preview", timeout=2
             )
             r.raise_for_status()
             img = Image.open(io.BytesIO(r.content))

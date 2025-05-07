@@ -35,7 +35,7 @@ def capture_still(output_path: str, size=(2480, 3508), quality=80):
     img.save(output_path,format="JPEG", quality=85, optimize=True)
     print(f"[capture.py] Wrote preview to {output_path}")
 
-def quick_capture(size=(640, 480), quality=60):
+def quick_capture(size=(620, 877), quality=60):
     with _camera_lock:
         picam2 = Picamera2()
         # low-res preview configuration
