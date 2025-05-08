@@ -6,26 +6,28 @@ from PIL import Image, ImageTk
 import requests
 
 class PiScannerGUI(tk.Tk):
-    PI_HOST = "192.168.137.32"  # ← Pi’s IP
-    STREAM_INTERVAL_MS = 50       # interval between frames (~20 fps)
+    # connecting to the Pi
+    PI_HOST = "192.168.137.32" # Pi's IP
+    STREAM_INTERVAL_MS = 50
 
     def __init__(self):
         super().__init__()
         self.title("Raspberry Pi Document Scanner")
         self.geometry("400x640")
         self.last_image = None
-        self.pages = []             # collected pages for PDF
+        self.pages = [] # collected pages for PDF
         self.streaming = False
 
-        # label for Pi status
+        # show Pi connection status
         self.hello_var = tk.StringVar(value="Connecting to Pi...")
         tk.Label(self, textvariable=self.hello_var, font=(None, 12, 'bold')).pack(pady=(10, 0))
 
         self._build_widgets()
-        self.ping_pi()              # get Pi connection message
-        self.start_stream()
+        self.ping_pi() # check Pi connection
+        self.start_stream() # start preview stream
 
     def _build_widgets(self):
+        # main preview area
         preview_container = tk.Frame(
             self, width=360, height=480, relief="groove", bd=2, bg="black"
         )
@@ -35,10 +37,11 @@ class PiScannerGUI(tk.Tk):
         self.preview = tk.Label(preview_container, bg="black")
         self.preview.pack(fill="both", expand=True)
 
+        # button container
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=5)
 
-        # Capture, Download Image, Save PDF, Quit
+        # action buttons
         self.btn_capture = tk.Button(btn_frame, text="📸 Capture", command=self.capture)
         self.btn_download = tk.Button(btn_frame, text="💾 Download", command=self.download)
         self.btn_save_pdf = tk.Button(btn_frame, text="📄 Save PDF", command=self.save_pdf)
@@ -46,24 +49,30 @@ class PiScannerGUI(tk.Tk):
         for btn in [self.btn_capture, self.btn_download, self.btn_save_pdf]:
             btn.pack(side="left", padx=4)
 
+        # lower status bar
         self.status = tk.StringVar(value="Ready")
         tk.Label(self, textvariable=self.status).pack(pady=6)
 
     def start_stream(self):
+        # start preview stream if not already running
         if not self.streaming:
             self.streaming = True
             self.stream_preview()
 
     def stop_stream(self):
+        # stop preview stream
         self.streaming = False
 
     def stream_preview(self):
+        # continuously fetch and display preview frames
         if not self.streaming:
             return
         try:
+            # get latest preview frame from Pi
             r = requests.get(f"http://{self.PI_HOST}:5000/preview", timeout=1)
             r.raise_for_status()
             img = Image.open(io.BytesIO(r.content))
+            # scale image to fit preview area
             container = self.preview.master
             container.update_idletasks()
             max_w, max_h = container.winfo_width(), container.winfo_height()
@@ -74,9 +83,11 @@ class PiScannerGUI(tk.Tk):
         except Exception:
             pass
         finally:
+            # schedule next frame
             self.after(self.STREAM_INTERVAL_MS, self.stream_preview)
 
     def ping_pi(self):
+        # check if Pi is online and responding
         try:
             r = requests.get(f"http://{self.PI_HOST}:5000/", timeout=3)
             r.raise_for_status()
@@ -86,17 +97,19 @@ class PiScannerGUI(tk.Tk):
             self.hello_var.set("Pi unreachable")
 
     def capture(self):
+        # take a high-quality photo
         self.stop_stream()
         try:
+            # request full resolution capture from Pi
             r = requests.get(f"http://{self.PI_HOST}:5000/capture", timeout=5)
             r.raise_for_status()
             orig = Image.open(io.BytesIO(r.content))
             self.last_image = orig.copy()
-            # always add to pages
+            # add to PDF pages
             self.pages.append(self.last_image.copy())
             self.status.set(f"Captured page {len(self.pages)}")
 
-            # thumbnail display
+            # show thumbnail preview
             container = self.preview.master
             container.update_idletasks()
             max_w, max_h = container.winfo_width(), container.winfo_height()
@@ -112,6 +125,7 @@ class PiScannerGUI(tk.Tk):
             self.start_stream()
 
     def download(self):
+        # save last captured image to a file
         if not self.last_image:
             messagebox.showerror("Download", "No image to save. Capture first.")
             return
@@ -129,6 +143,7 @@ class PiScannerGUI(tk.Tk):
                 messagebox.showerror("Save Error", str(e))
 
     def save_pdf(self):
+        # combine all captured pages into PDF
         if not self.pages:
             messagebox.showerror("Save PDF", "No pages captured.")
             return
@@ -140,10 +155,11 @@ class PiScannerGUI(tk.Tk):
         )
         if path:
             try:
+                # save first page and append the rest
                 first, rest = self.pages[0], self.pages[1:]
                 first.save(path, "PDF", save_all=True, append_images=rest, resolution=100.0)
                 self.status.set(f"PDF saved to {path}")
-                # clear pages after saving
+                # clear pages after successful save
                 self.pages.clear()
             except Exception as e:
                 messagebox.showerror("PDF Error", str(e))
